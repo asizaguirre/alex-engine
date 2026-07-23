@@ -1,112 +1,81 @@
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI
+from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
-import requests
+import uvicorn
 import os
 
+app = FastAPI(title="Al-ex & Al-ia Platform")
 
-app = FastAPI(
-    title="AlEx Local AI Engine",
-    version="2.0"
-)
+# Templates
+templates = Jinja2Templates(directory="templates")
 
-
-OLLAMA_URL = os.getenv(
-    "OLLAMA_URL",
-    "http://localhost:11434"
-)
-
-API_KEY = os.getenv(
-    "ALEX_ENGINE_API_KEY",
-    "7221971d3bb6ec4118585a821e92378c446fd4267297a62c89e56906a4399287"
-)
-
-
-class ChatRequest(BaseModel):
+class Message(BaseModel):
     message: str
+    agent: str = "al-ex"  # al-ex ou al-ia
 
+@app.get("/", response_class=HTMLResponse)
+async def home():
+    html_content = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Al-ex & Al-ia</title>
+        <style>
+            body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #0f0f23; color: #00ffcc; }
+            .chat { max-width: 800px; margin: 0 auto; }
+            .message { margin: 15px 0; padding: 12px; border-radius: 8px; }
+            .al-ex { background: #1a1a2e; border-left: 5px solid #00ffcc; }
+            .al-ia { background: #16213e; border-left: 5px solid #ff00cc; }
+            input { width: 100%; padding: 15px; font-size: 16px; background: #1e1e2f; border: none; color: white; border-radius: 8px; }
+        </style>
+    </head>
+    <body>
+        <div class="chat">
+            <h1>🤖 Al-ex & Al-ia</h1>
+            <p>Converse com os dois agentes de IA</p>
+            
+            <div id="chat"></div>
+            
+            <input type="text" id="userInput" placeholder="Digite sua mensagem..." onkeypress="if(event.key === 'Enter') sendMessage()">
+            <button onclick="sendMessage()">Enviar</button>
+        </div>
 
-@app.get("/health")
-def health():
+        <script>
+            async function sendMessage() {
+                const input = document.getElementById("userInput");
+                const message = input.value;
+                if (!message) return;
 
-    return {
-        "status": "UP",
-        "engine": "AlEx",
-        "ollama": "connected"
-    }
+                addMessage("Você", message, "user");
 
+                const res = await fetch("/chat", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({message: message})
+                });
+                const data = await res.json();
+                
+                addMessage("Al-ex", data.response || "Sem resposta", "al-ex");
+                input.value = "";
+            }
 
+            function addMessage(sender, text, type) {
+                const chat = document.getElementById("chat");
+                chat.innerHTML += `<div class="message ${type}"><strong>${sender}:</strong> ${text}</div>`;
+                chat.scrollTop = chat.scrollHeight;
+            }
+        </script>
+    </body>
+    </html>
+    """
+    return HTMLResponse(html_content)
 
-@app.post("/api/agents/chat")
-def agent_chat(
-    request: ChatRequest,
-    x_api_key: str = Header(None)
-):
+@app.post("/chat")
+async def chat(msg: Message):
+    # Aqui você pode integrar RAG, Ollama, etc.
+    return {"response": f"Olá! Sou o {msg.agent.upper()}. Recebi: {msg.message}. Como posso ajudar?"}
 
-    if x_api_key != API_KEY:
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid API Key"
-        )
-
-
-    payload = {
-
-        "model": "qwen2.5-coder:7b",
-
-        "prompt": request.message,
-
-        "stream": False
-
-    }
-
-
-    response = requests.post(
-
-        f"{OLLAMA_URL}/api/generate",
-
-        json=payload,
-
-        timeout=120
-
-    )
-
-
-    result = response.json()
-
-
-    return {
-
-        "engine": "AlEx",
-
-        "response": result.get("response",""),
-
-        "model": "qwen2.5-coder:7b"
-
-    }
-
-
-
-@app.get("/chat")
-def old_chat(message:str):
-
-    payload = {
-
-        "model":"qwen2.5-coder:7b",
-
-        "prompt":message,
-
-        "stream":False
-
-    }
-
-
-    response=requests.post(
-
-        f"{OLLAMA_URL}/api/generate",
-
-        json=payload
-
-    )
-
-
-    return response.json()
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=9002)
